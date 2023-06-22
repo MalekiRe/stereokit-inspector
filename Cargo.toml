@@ -22,4 +22,4 @@ stereokit-egui = { path = "../stereokit-egui"}
 stereokit-ui-extras = { path = "../stereokit-ui-extras"}
 egui = "0.22.0"
 downcast-trait = "0.1.0"
-skshader-macro = { path = "../skshader-macro"}
+skshader-macro = { path = "../skshader-rs/skshader-macro"}

@@ -19,27 +19,26 @@ use bevy_hierarchy::Parent;
 use bevy_reflect::{FromReflect, GetField, NamedField, Reflect, reflect_trait, ReflectMut, ReflectRef, TypeInfo};
 use bevy_transform::prelude::Transform;
 use stereokit::{Color128, Color32, Material, Mesh, Model, MoveType, Pose, Shader, Sk, SkDraw, StereoKitMultiThread, Transparency, UiColor, UiCut, WindowContext, WindowType};
-use stereokit_bevy::{ModelBundle, StereoKitBevy};
+use stereokit_bevy::{ModelBundle, StereoKitBevy, StereoKitBevyMinimalPlugins};
 use stereokit_ui_extras::UiExtras;
 use stereokit_ui_extras::HzSlider;
 use const_random::const_random;
-use egui::{CollapsingHeader, ecolor, Slider, Ui, Widget, widgets};
+use egui::{Checkbox, CollapsingHeader, DragValue, ecolor, Slider, Ui, Widget, widgets};
 use egui::color_picker::Alpha;
 use glam::{EulerRot, Quat, Vec3};
 use stereokit_egui::SkEguiWindowTrait;
+use crate::field_access::FieldAccess;
 
 
 fn main() {
     let mut app = App::new();
-    app.add_plugin(StereoKitBevy);
+    app.add_plugins(StereoKitBevyMinimalPlugins);
     app.add_plugin(StereoKitInspector);
     app.add_startup_system(test_spawn);
     app.run();
 }
 
 fn test_spawn(mut commands: Commands, sk: Res<Sk>) {
-    //let mat = sk.material_create(Shader::DEFAULT);
-    //sk.material_set_transparency(&mat, Transparency::Blend);
     let mut entity = commands.spawn(
         ModelBundle::new(sk.model_create_mesh(Mesh::SPHERE, Material::DEFAULT),
                          Transform::from_scale([0.1, 0.1, 0.04].into()),
@@ -60,6 +59,19 @@ fn test_spawn(mut commands: Commands, sk: Res<Sk>) {
 pub struct ExampleStruct {
     field1: ExampleField1,
     field2: ExampleField2,
+    field3: MyEnum,
+}
+
+#[derive(Reflect, FromReflect)]
+pub enum MyEnum {
+    Variant1(String),
+    Variant2,
+}
+
+impl Default for MyEnum {
+    fn default() -> Self {
+        MyEnum::Variant1(String::from("hi"))
+    }
 }
 
 #[derive(Reflect, FromReflect)]
@@ -121,19 +133,15 @@ impl DisplayComponent for Model {
 
 impl DisplayComponent for Transform {
     fn display_component(&mut self, ui: &mut Ui) {
+        const DRAG_SPEED: f32 = 0.03;
+        const ROTATION_DRAG_SPEED: f32 = 0.5;
         ui.collapsing("Transform", |ui| {
             ui.horizontal(|ui| {
                 ui.label("Pos:");
                 ui.add_space(ui.spacing().indent * 3.0);
-                Slider::new(&mut self.translation.x, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("x")
-                    .ui(ui);
-                Slider::new(&mut self.translation.y, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("y")
-                    .ui(ui);
-                Slider::new(&mut self.translation.z, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("z")
-                    .ui(ui);
+                DragValue::new(&mut self.translation.x).speed(DRAG_SPEED).prefix("x: ").ui(ui);
+                DragValue::new(&mut self.translation.y).speed(DRAG_SPEED).prefix("y: ").ui(ui);
+                DragValue::new(&mut self.translation.z).speed(DRAG_SPEED).prefix("z: ").ui(ui);
             });
             ui.horizontal(|ui| {
                 ui.label("Rot:");
@@ -142,29 +150,17 @@ impl DisplayComponent for Transform {
                 rotation.0 = rotation.0.to_degrees();
                 rotation.1 = rotation.1.to_degrees();
                 rotation.2 = rotation.2.to_degrees();
-                Slider::new(&mut rotation.0, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("x")
-                    .ui(ui);
-                Slider::new(&mut rotation.1, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("y")
-                    .ui(ui);
-                Slider::new(&mut rotation.2, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("z")
-                    .ui(ui);
+                DragValue::new(&mut rotation.0).speed(ROTATION_DRAG_SPEED).prefix("x: ").ui(ui);
+                DragValue::new(&mut rotation.1).speed(ROTATION_DRAG_SPEED).prefix("y: ").ui(ui);
+                DragValue::new(&mut rotation.2).speed(ROTATION_DRAG_SPEED).prefix("z: ").ui(ui);
                 self.rotation = Quat::from_euler(EulerRot::XYZ, rotation.0.to_radians(), rotation.1.to_radians(), rotation.2.to_radians());
             });
             ui.horizontal(|ui| {
                 ui.label("Scale:");
                 ui.add_space(ui.spacing().indent * 3.0);
-                Slider::new(&mut self.scale.x, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("x")
-                    .ui(ui);
-                Slider::new(&mut self.scale.y, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("y")
-                    .ui(ui);
-                Slider::new(&mut self.scale.z, RangeInclusive::new(-3.0, 3.0))
-                    .prefix("z")
-                    .ui(ui);
+                DragValue::new(&mut self.scale.x).speed(DRAG_SPEED).prefix("x: ").ui(ui);
+                DragValue::new(&mut self.scale.y).speed(DRAG_SPEED).prefix("y: ").ui(ui);
+                DragValue::new(&mut self.scale.z).speed(DRAG_SPEED).prefix("z: ").ui(ui);
             });
         });
     }
@@ -230,18 +226,21 @@ impl DisplayComponentList {
         self.0.push(Box::new(function));
     }
     fn recursively_show_fields(field: &mut dyn Reflect, ui: &mut Ui) {
-        if let Some(val) = field.downcast_ref::<i32>() {
-            ui.label(format!("{val}"));
+        if let Some(val) = field.downcast_mut::<i32>() {
+            DragValue::new(val).ui(ui);
+            // ui.label(format!("{val}"));
         }
         else if let Some(val) = field.downcast_mut::<f32>() {
-            ui.label(format!("{val}"));
-            //ui.hz_slider("a", val, 0.0, 1.0, 0.01, 0.04);
+            DragValue::new(val).ui(ui);
+            //ui.label(format!("{val}"));
         }
-        else if let Some(val) = field.downcast_ref::<bool>() {
-            ui.label(format!("{val}"));
+        else if let Some(val) = field.downcast_mut::<bool>() {
+            Checkbox::without_text(val).ui(ui);
+            //ui.label(format!("{val}"));
         }
-        else if let Some(val) = field.downcast_ref::<String>() {
-            ui.label(format!("{val}"));
+        else if let Some(val) = field.downcast_mut::<String>() {
+            ui.text_edit_multiline(val);
+            //ui.label(format!("{val}"));
         } else {
             match field.reflect_mut() {
                 ReflectMut::Struct(strct) => {
@@ -253,43 +252,18 @@ impl DisplayComponentList {
                         });
                     }
                 }
-                _ => {}
-            }
-        }
-    }
-}
-
-
-fn display_field(ui: &mut Ui, field: &mut dyn Reflect) {
-    // if let Some(display_component) = field.as_any_mut().downcast_mut::<dyn DisplayComponent>() {
-    //     display_component.display_component(ui);
-    // }
-
-    /*ui.label(field.type_name(), true);
-    if let Some(val) = field.downcast_ref::<i32>() {
-        ui.label(format!("{val}"), false);
-    }
-    else if let Some(val) = field.downcast_mut::<f32>() {
-        ui.label(format!("{val}"), false);
-        ui.hz_slider("a", val, 0.0, 1.0, 0.01, 0.04);
-    }
-    else if let Some(val) = field.downcast_ref::<bool>() {
-        ui.label(format!("{val}"), false);
-    }
-    else if let Some(val) = field.downcast_ref::<String>() {
-        ui.label(format!("{val}"), false);
-    } else {
-        match field.reflect_mut() {
-            ReflectMut::Struct(strct) => {
-                for i in 0..strct.field_len() {
-                    ui.label(strct.name_at(i).unwrap(), false);
-                    let field = strct.field_at_mut(i).unwrap();
-                    display_field(ui, field);
+                ReflectMut::TupleStruct(_) => {}
+                ReflectMut::Tuple(_) => {}
+                ReflectMut::List(_) => {}
+                ReflectMut::Array(_) => {}
+                ReflectMut::Map(_) => {}
+                ReflectMut::Enum(enm) => {
+                    ui.label(enm.variant_name());
                 }
+                ReflectMut::Value(_) => {}
             }
-            _ => {}
         }
-    }*/
+    }
 }
 
 #[derive(Resource)]
